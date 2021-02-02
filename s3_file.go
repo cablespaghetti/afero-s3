@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/afero"
@@ -295,11 +297,21 @@ func (f *File) openWriteStream() error {
 	uploader := s3manager.NewUploader(f.fs.session)
 	uploader.Concurrency = 1
 
+	// File is uploaded as filename.ext.temp so use penultimate part of name to get extension
+	fileNameSlice := strings.Split(f.name, ".")
+	fileExtension := ""
+	if len(fileNameSlice) >= 2 {
+		fileExtension = "." + fileNameSlice[len(fileNameSlice)-2]
+	}
+	mimeType := mime.TypeByExtension(fileExtension)
+
 	go func() {
 		_, err := uploader.Upload(&s3manager.UploadInput{
-			Bucket: aws.String(f.fs.bucket),
-			Key:    aws.String(f.name),
-			Body:   reader,
+			Bucket:       aws.String(f.fs.bucket),
+			Key:          aws.String(f.name),
+			Body:         reader,
+			ContentType:  aws.String(mimeType),
+			CacheControl: aws.String("max-age=30"),
 		})
 		f.streamWriteCloseErr <- err
 		// close(f.streamWriteCloseErr)
